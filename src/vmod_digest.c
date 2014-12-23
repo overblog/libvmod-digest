@@ -187,7 +187,7 @@ base64_encode (struct e_alphabet *alpha, const char *in,
 			idx += (tmp[1] >> 4);
 		idx &= 0x3f;
 		*out++ = alpha->b64[idx];
-			
+
 		if (inlen>1) {
 			idx = (tmp[1] << 2);
 			if (inlen>2)
@@ -218,7 +218,7 @@ base64_encode (struct e_alphabet *alpha, const char *in,
 
 		if (inlen<4)
 			break;
-		
+
 		inlen -= 3;
 		in += 3;
 	}
@@ -258,7 +258,7 @@ vmod_hmac_generic(struct sess *sp, hashid hash, const char *key, const char *msg
 		mhash_get_hash_pblock(hash));
 	mhash(td, msg, strlen(msg));
 	mhash_hmac_deinit(td,mac);
-	
+
 	/*
 	 * HEX-encode
 	 */
@@ -286,7 +286,7 @@ vmod_base64_generic(struct sess *sp, enum alphabets a, const char *msg)
 	assert(a<N_ALPHA);
 	CHECK_OBJ_NOTNULL(sp, SESS_MAGIC);
 	CHECK_OBJ_NOTNULL(sp->ws, WS_MAGIC);
-	
+
 	u = WS_Reserve(sp->ws,0);
 	p = sp->ws->f;
 	u = base64_encode(&alphabet[a],msg,strlen(msg),p,u);
@@ -418,6 +418,49 @@ VMOD_HMAC_FOO(sha256,SHA256)
 VMOD_HMAC_FOO(sha1,SHA1)
 VMOD_HMAC_FOO(md5,MD5)
 
+/**
+ * Thumbor VMD Declaration
+ */
+const char * __match_proto__()
+vmod_thumbor(struct sess *sp, const char *key, const char *msg)
+{
+	if (msg == NULL)
+		msg = "";
+	if (key == NULL)
+		return NULL;
+
+    size_t blocksize = mhash_get_block_size(MHASH_SHA1);
+	unsigned char mac[blocksize];
+    MHASH td;
+    char *buffer;
+	unsigned buffer_size, nb_char;
+
+	assert(msg);
+	assert(key);
+	CHECK_OBJ_NOTNULL(sp, SESS_MAGIC);
+	CHECK_OBJ_NOTNULL(sp->ws, WS_MAGIC);
+
+	assert(mhash_get_hash_pblock(MHASH_SHA1) > 0);
+
+	td = mhash_hmac_init(MHASH_SHA1, (void *) key, strlen(key),
+		mhash_get_hash_pblock(MHASH_SHA1));
+	mhash(td, msg, strlen(msg));
+    mhash_hmac_deinit(td, mac);
+
+	buffer_size = WS_Reserve(sp->wrk->ws, 0); /* Reserve some work space */
+	buffer = sp->wrk->ws->f;		/* Front of workspace area */
+	nb_char = snprintf(buffer, buffer_size, "%s", mac);
+	nb_char++; // Ajoute \0
+	if (nb_char > buffer_size) {
+		/* No space, reset and leave */
+		WS_Release(sp->wrk->ws, 0);
+		return (NULL);
+	}
+	/* Update work space with what we've used */
+	WS_Release(sp->wrk->ws, nb_char);
+
+	return (buffer);
+}
 
 const char * __match_proto__()
 vmod_version(struct sess *sp __attribute__((unused)))
